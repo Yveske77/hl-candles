@@ -1,34 +1,24 @@
-# Multi-stage build for smaller image
-FROM golang:1.21-alpine AS builder
+# Build stage
+FROM rust:1.75-slim as builder
 
-# Install build dependencies
-RUN apk add --no-cache git
+WORKDIR /usr/src/app
+# Copy over files
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
 
-WORKDIR /app
+# Build for release
+RUN cargo build --release
 
-# Copy go mod files
-COPY go.mod go.sum ./
-RUN go mod download
+# Distroless or small runtime stage
+FROM debian:bookworm-slim
 
-# Copy source code
-COPY *.go ./
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /usr/local/bin
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server .
+COPY --from=builder /usr/src/app/target/release/backend-hyperliquid-candles .
 
-# Final stage
-FROM alpine:latest
-
-RUN apk --no-cache add ca-certificates tzdata
-
-WORKDIR /root/
-
-# Copy the binary from builder
-COPY --from=builder /app/server .
-
-# Expose port
+# Setup environment variables needed
+ENV PORT=3000
 EXPOSE 3000
 
-# Run the server
-CMD ["./server"]
-
+CMD ["./backend-hyperliquid-candles"]
